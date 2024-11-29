@@ -18,53 +18,132 @@ DATA_DIR = './dataset'
 
 
 def get_data_loader(dataset, world_size, rank, batch_size, k=0, pin_memory=False, save_best=True):
-    data_path = os.path.join(DATA_DIR, dataset + '.data')
-    info_path = os.path.join(DATA_DIR, dataset + '.info')
-    X_df, y_df, f_df, label_pos = read_csv(data_path, info_path, shuffle=True)
+    if dataset in ["tic-tac-toe", "bank-marketing", "housing"]:
+        data_path = os.path.join(DATA_DIR, dataset + '.data')
+        info_path = os.path.join(DATA_DIR, dataset + '.info')
+        X_df, y_df, f_df, label_pos = read_csv(data_path, info_path, shuffle=True)
+        # import IPython; IPython.embed()
 
-    db_enc = DBEncoder(f_df, discrete=False)
-    db_enc.fit(X_df, y_df)
+        db_enc = DBEncoder(f_df, discrete=False, is_regression=dataset == "housing",)
+        db_enc.fit(X_df, y_df)
 
-    X, y = db_enc.transform(X_df, y_df, normalized=True, keep_stat=True)
+        X, y = db_enc.transform(X_df, y_df, normalized=True, keep_stat=True)
 
-    kf = KFold(n_splits=5, shuffle=True, random_state=0)
-    train_index, test_index = list(kf.split(X_df))[k]
-    X_train = X[train_index]
-    y_train = y[train_index]
-    X_test = X[test_index]
-    y_test = y[test_index]
+        kf = KFold(n_splits=5, shuffle=True, random_state=0)
+        train_index, test_index = list(kf.split(X_df))[k]
+        X_train = X[train_index]
+        y_train = y[train_index]
+        X_test = X[test_index]
+        y_test = y[test_index]
 
-    train_set = TensorDataset(torch.tensor(X_train.astype(np.float32)), torch.tensor(y_train.astype(np.float32)))
-    test_set = TensorDataset(torch.tensor(X_test.astype(np.float32)), torch.tensor(y_test.astype(np.float32)))
+        train_set = TensorDataset(torch.tensor(X_train.astype(np.float32)), torch.tensor(y_train.astype(np.float32)))
+        test_set = TensorDataset(torch.tensor(X_test.astype(np.float32)), torch.tensor(y_test.astype(np.float32)))
 
-    train_len = int(len(train_set) * 0.95)
-    train_sub, valid_set = random_split(train_set, [train_len, len(train_set) - train_len])
+        train_len = int(len(train_set) * 0.95)
+        train_sub, valid_set = random_split(train_set, [train_len, len(train_set) - train_len])
 
-    if save_best:  # use validation set for model selections.
-        train_set = train_sub
+        if save_best:  # use validation set for model selections.
+            train_set = train_sub
 
-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_set, num_replicas=world_size, rank=rank)
+        train_sampler = torch.utils.data.distributed.DistributedSampler(train_set, num_replicas=world_size, rank=rank)
 
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=False, pin_memory=pin_memory, sampler=train_sampler)
-    valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=False, pin_memory=pin_memory)
-    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, pin_memory=pin_memory)
+        train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=False, pin_memory=pin_memory, sampler=train_sampler)
+        valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=False, pin_memory=pin_memory)
+        test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, pin_memory=pin_memory)
 
-    return db_enc, train_loader, valid_loader, test_loader
+        return db_enc, train_loader, valid_loader, test_loader
 
+
+    # elif dataset == "bank-marketing":
+    #     from ucimlrepo import fetch_ucirepo
+
+    #     bank_marketing = fetch_ucirepo(id=222)
+    #     X_df = bank_marketing.data.features
+    #     y_df = bank_marketing.data.targets
+        
+    #     # concat X and y
+    #     import pandas as pd
+    #     D = pd.concat([X_df, y_df], axis=1)
+
+        
+    #     # "age";"job";"marital";"education";"default";"balance";"housing";"loan";"contact";"day";"month";"duration";"campaign";"pdays";"previous";"poutcome";"y"
+    #     numerical_cols = ["age", "balance", "duration", "campaign", "pdays", "previous"]
+    #     from sklearn.preprocessing import MinMaxScaler
+    #     scaler = MinMaxScaler()
+    #     D[numerical_cols] = scaler.fit_transform(D[numerical_cols])
+        
+    #     yn_cols = ["default", "housing", "loan", "y"]
+    #     for col in yn_cols:
+    #         D[col] = D[col].map({"yes": 1, "no": 0})
+        
+    #     categorical_cols = ["job", "marital", "education", "contact", "month", "poutcome"]
+    #     D = pd.get_dummies(D, columns=categorical_cols)
+        
+    #     # rearrange values. 
+        
+    #     X = D.drop(columns=["y"]).values
+    #     y = D["y"].values
+        
+        
+    #     kf = KFold(n_splits=5, shuffle=True, random_state=0)
+    #     train_index, test_index = list(kf.split(X_df))[k]
+    #     X_train = X[train_index]
+    #     y_train = y[train_index]
+    #     X_test = X[test_index]
+    #     y_test = y[test_index]
+
+    #     train_set = TensorDataset(torch.tensor(X_train.astype(np.float32)), torch.tensor(y_train.astype(np.float32)))
+    #     test_set = TensorDataset(torch.tensor(X_test.astype(np.float32)), torch.tensor(y_test.astype(np.float32)))
+
+    #     train_len = int(len(train_set) * 0.95)
+    #     train_sub, valid_set = random_split(train_set, [train_len, len(train_set) - train_len])
+
+    #     if save_best:  # use validation set for model selections.
+    #         train_set = train_sub
+
+    #     train_sampler = torch.utils.data.distributed.DistributedSampler(train_set, num_replicas=world_size, rank=rank)
+
+    #     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=False, pin_memory=pin_memory, sampler=train_sampler)
+    #     valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=False, pin_memory=pin_memory)
+    #     test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, pin_memory=pin_memory)
+
+    #     import IPython; IPython.embed()
+    #     db_enc = DBEncoder(None)
+    #     # used variables
+    #     # X_fname = db_enc.X_fname
+    #     # y_fname = db_enc.y_fname
+    #     # discrete_flen = db_enc.discrete_flen
+    #     # continuous_flen = db_enc.continuous_flen
+        
+    #     db_enc.X_fname = list(D.drop(columns=["y"]).columns)
+    #     db_enc.y_fname = ["y"]
+    #     db_enc.discrete_flen = 0
+    #     db_enc.continuous_flen = len(db_enc.X_fname)
+
+    #     return db_enc, train_loader, valid_loader, test_loader
+        
+        
+        # import IPython; IPython.embed()
+
+        
+        
+    else:
+        raise ValueError('Unknown dataset: {}'.format(dataset))
 
 def train_model(gpu, args):
-    rank = args.nr * args.gpus + gpu
-    dist.init_process_group(backend='nccl', init_method='env://', world_size=args.world_size, rank=rank)
+    # rank = args.nr * args.gpus + gpu
+    rank = 0
+    # dist.init_process_group(backend='nccl', init_method='env://', world_size=args.world_size, rank=rank)
     torch.manual_seed(42)
     device_id = args.device_ids[gpu]
     torch.cuda.set_device(device_id)
 
-    if gpu == 0:
-        writer = SummaryWriter(args.folder_path)
-        is_rank0 = True
-    else:
-        writer = None
-        is_rank0 = False
+    # if gpu == 0:
+    writer = SummaryWriter(args.folder_path)
+    is_rank0 = True
+    # else:
+    #     writer = None
+    #     is_rank0 = False
 
     dataset = args.data_set
     db_enc, train_loader, valid_loader, _ = get_data_loader(dataset, args.world_size, rank, args.batch_size,
@@ -89,7 +168,10 @@ def train_model(gpu, args):
               alpha=args.alpha,
               beta=args.beta,
               gamma=args.gamma,
-              temperature=args.temp)
+              temperature=args.temp, 
+              is_regression=dataset == "housing",
+              db_enc=db_enc,
+              distributed=False)
 
     rrl.train_model(
         data_loader=train_loader,
@@ -102,7 +184,7 @@ def train_model(gpu, args):
         log_iter=args.log_iter)
 
 
-def load_model(path, device_id, log_file=None, distributed=True):
+def load_model(path, device_id, log_file=None, distributed=True, db_enc=None, dataset="housing"):
     checkpoint = torch.load(path, map_location='cpu')
     saved_args = checkpoint['rrl_args']
     rrl = RRL(
@@ -117,19 +199,23 @@ def load_model(path, device_id, log_file=None, distributed=True):
         use_nlaf=saved_args['use_nlaf'],
         alpha=saved_args['alpha'],
         beta=saved_args['beta'],
-        gamma=saved_args['gamma'])
+        gamma=saved_args['gamma'],
+        is_regression=dataset == "housing",
+        db_enc=db_enc,)
+
     stat_dict = checkpoint['model_state_dict']
     for key in list(stat_dict.keys()):
         # remove 'module.' prefix
-        stat_dict[key[7:]] = stat_dict.pop(key)
+        if 'module.' in key:
+            stat_dict[key[7:]] = stat_dict.pop(key)
     rrl.net.load_state_dict(checkpoint['model_state_dict'])
     return rrl
 
 
 def test_model(args):
-    rrl = load_model(args.model, args.device_ids[0], log_file=args.test_res, distributed=False)
     dataset = args.data_set
-    db_enc, train_loader, _, test_loader = get_data_loader(dataset, 4, 0, args.batch_size, args.ith_kfold, save_best=False)
+    db_enc, train_loader, _, test_loader = get_data_loader(dataset, 4, 0, args.batch_size, args.ith_kfold, save_best=False,)
+    rrl = load_model(args.model, args.device_ids[0], log_file=args.test_res, distributed=False, db_enc=db_enc, dataset=dataset)
     rrl.test(test_loader=test_loader, set_name='Test')
     if args.print_rule:
         with open(args.rrl_file, 'w') as rrl_file:
@@ -164,12 +250,13 @@ def test_model(args):
 def train_main(args):
     os.environ['MASTER_ADDR'] = args.master_address
     os.environ['MASTER_PORT'] = args.master_port
-    mp.spawn(train_model, nprocs=args.gpus, args=(args,))
+    # mp.spawn(train_model, nprocs=args.gpus, args=(args,))
+    train_model(0, args)
 
 
 if __name__ == '__main__':
     from args import rrl_args
-    # for arg in vars(rrl_args):
-    #     print(arg, getattr(rrl_args, arg))
+    for arg in vars(rrl_args):
+        print(arg, getattr(rrl_args, arg))
     train_main(rrl_args)
     test_model(rrl_args)

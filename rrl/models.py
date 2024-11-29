@@ -1,6 +1,7 @@
 import sys
 import logging
 import numpy as np
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 from sklearn import metrics
@@ -93,7 +94,7 @@ class MyDistributedDataParallel(torch.nn.parallel.DistributedDataParallel):
 class RRL:
     def __init__(self, dim_list, device_id, use_not=False, is_rank0=False, log_file=None, writer=None, left=None,
                  right=None, save_best=False, estimated_grad=False, save_path=None, distributed=True, use_skip=False, 
-                 use_nlaf=False, alpha=0.999, beta=8, gamma=1, temperature=0.01):
+                 use_nlaf=False, alpha=0.999, beta=8, gamma=1, temperature=0.01, is_regression=False, db_enc=None):
         super(RRL, self).__init__()
         self.dim_list = dim_list
         self.use_not = use_not
@@ -102,8 +103,10 @@ class RRL:
         self.alpha =alpha
         self.beta = beta
         self.gamma = gamma
-        self.best_f1 = -1.
+        self.best_f1 = -10000.
         self.best_loss = 1e20
+        self.is_regression = is_regression
+        self.db_enc = db_enc
 
         self.device_id = device_id
         self.is_rank0 = is_rank0
@@ -174,12 +177,13 @@ class RRL:
         f1_score_b = []
 
         criterion = nn.CrossEntropyLoss().cuda(self.device_id)
+        mse_criterion = nn.MSELoss().cuda(self.device_id)
         optimizer = torch.optim.Adam(self.net.parameters(), lr=lr, weight_decay=0.0)
 
         cnt = -1
         avg_batch_loss_rrl = 0.0
         epoch_histc = defaultdict(list)
-        for epo in range(epoch):
+        for epo in tqdm(range(epoch), total=epoch, desc='Training RRL Model'):
             optimizer = self.exp_lr_scheduler(optimizer, epo, init_lr=lr, lr_decay_rate=lr_decay_rate,
                                               lr_decay_epoch=lr_decay_epoch)
 
@@ -195,10 +199,14 @@ class RRL:
                 optimizer.zero_grad()  # Zero the gradient buffers.
                 
                 # trainable softmax temperature
-                y_bar = self.net.forward(X) / torch.exp(self.net.t)
-                y_arg = torch.argmax(y, dim=1)
-                
-                loss_rrl = criterion(y_bar, y_arg) + weight_decay * self.l2_penalty()
+                if not self.is_regression:
+                    y_bar = self.net.forward(X) / torch.exp(self.net.t)
+                    y_arg = torch.argmax(y, dim=1)
+                    
+                    loss_rrl = criterion(y_bar, y_arg) + weight_decay * self.l2_penalty()
+                else:
+                    y_pred = self.net.forward(X)
+                    loss_rrl = mse_criterion(y_pred, y) + weight_decay * self.l2_penalty()
                 
                 ba_loss_rrl = loss_rrl.item()
                 epoch_loss_rrl += ba_loss_rrl
@@ -216,9 +224,12 @@ class RRL:
                         avg_batch_loss_rrl = 0.0
 
                 optimizer.step()
+
                 
                 if self.is_rank0:
                     for i, param in enumerate(self.net.parameters()):
+                        if param.grad is None:
+                            continue
                         abs_gradient_max = max(abs_gradient_max, abs(torch.max(param.grad)))
                         abs_gradient_avg += torch.sum(torch.abs(param.grad)) / (param.grad.numel())
                 self.clip()
@@ -253,40 +264,74 @@ class RRL:
     def test(self, test_loader=None, set_name='Validation'):
         if test_loader is None:
             raise Exception("Data loader is unavailable!")
+        if not self.is_regression:
+            y_list = []
+            for X, y in test_loader:
+                y_list.append(y)
+            y_true = torch.cat(y_list, dim=0)
+            y_true = y_true.cpu().numpy().astype(np.int64)
+            y_true = np.argmax(y_true, axis=1)
+            data_num = y_true.shape[0]
+
+            slice_step = data_num // 40 if data_num >= 40 else 1
+            logging.debug('y_true: {} {}'.format(y_true.shape, y_true[:: slice_step]))
+
+            y_pred_b_list = []
+            for X, y in test_loader:
+                X = X.cuda(self.device_id, non_blocking=True)
+                output = self.net.forward(X)
+                y_pred_b_list.append(output)
+
+            y_pred_b = torch.cat(y_pred_b_list).cpu().numpy()
+            y_pred_b_arg = np.argmax(y_pred_b, axis=1)
+            logging.debug('y_rrl_: {} {}'.format(y_pred_b_arg.shape, y_pred_b_arg[:: slice_step]))
+            logging.debug('y_rrl: {} {}'.format(y_pred_b.shape, y_pred_b[:: (slice_step)]))
+
+            accuracy_b = metrics.accuracy_score(y_true, y_pred_b_arg)
+            f1_score_b = metrics.f1_score(y_true, y_pred_b_arg, average='macro')
+
+            logging.info('-' * 60)
+            logging.info('On {} Set:\n\tAccuracy of RRL  Model: {}'
+                            '\n\tF1 Score of RRL  Model: {}'.format(set_name, accuracy_b, f1_score_b))
+            logging.info('On {} Set:\nPerformance of  RRL Model: \n{}\n{}'.format(
+                set_name, metrics.confusion_matrix(y_true, y_pred_b_arg), metrics.classification_report(y_true, y_pred_b_arg)))
+            logging.info('-' * 60)
+
+            return accuracy_b, f1_score_b
+
         
-        y_list = []
-        for X, y in test_loader:
-            y_list.append(y)
-        y_true = torch.cat(y_list, dim=0)
-        y_true = y_true.cpu().numpy().astype(np.int)
-        y_true = np.argmax(y_true, axis=1)
-        data_num = y_true.shape[0]
-
-        slice_step = data_num // 40 if data_num >= 40 else 1
-        logging.debug('y_true: {} {}'.format(y_true.shape, y_true[:: slice_step]))
-
-        y_pred_b_list = []
-        for X, y in test_loader:
-            X = X.cuda(self.device_id, non_blocking=True)
-            output = self.net.forward(X)
-            y_pred_b_list.append(output)
-
-        y_pred_b = torch.cat(y_pred_b_list).cpu().numpy()
-        y_pred_b_arg = np.argmax(y_pred_b, axis=1)
-        logging.debug('y_rrl_: {} {}'.format(y_pred_b_arg.shape, y_pred_b_arg[:: slice_step]))
-        logging.debug('y_rrl: {} {}'.format(y_pred_b.shape, y_pred_b[:: (slice_step)]))
-
-        accuracy_b = metrics.accuracy_score(y_true, y_pred_b_arg)
-        f1_score_b = metrics.f1_score(y_true, y_pred_b_arg, average='macro')
-
-        logging.info('-' * 60)
-        logging.info('On {} Set:\n\tAccuracy of RRL  Model: {}'
-                        '\n\tF1 Score of RRL  Model: {}'.format(set_name, accuracy_b, f1_score_b))
-        logging.info('On {} Set:\nPerformance of  RRL Model: \n{}\n{}'.format(
-            set_name, metrics.confusion_matrix(y_true, y_pred_b_arg), metrics.classification_report(y_true, y_pred_b_arg)))
-        logging.info('-' * 60)
-
-        return accuracy_b, f1_score_b
+        else:
+            y_list = []
+            for X, y in test_loader:
+                y_list.append(y)
+            y_true = torch.cat(y_list, dim=0)
+            y_true = y_true.cpu().numpy().astype(np.float32) # (B,1)
+            
+            y_pred_b_list = []
+            for X, y in test_loader:
+                X = X.cuda(self.device_id, non_blocking=True)
+                output = self.net.forward(X)
+                y_pred_b_list.append(output)
+            y_pred_b = torch.cat(y_pred_b_list).cpu().numpy() # (B,1)
+            
+            # import IPython; IPython.embed()
+            # convert to original scale. use self.db_enc.label_enc.inverse_transform.
+            y_true_orig = self.db_enc.label_enc.inverse_transform(y_true)
+            y_pred_orig = self.db_enc.label_enc.inverse_transform(y_pred_b)
+            
+            # concat them together and print
+            y_debug = np.concatenate((y_true_orig, y_pred_orig), axis=1)
+            logging.info('y_true/pred: {} {}'.format(y_debug.shape, y_debug))
+            
+            logging.info('-' * 60)
+            logging.info('On {} Set:\n\tMSE of RRL  Model: {}'.format(set_name, metrics.mean_squared_error(y_true_orig, y_pred_orig)))
+            logging.info('-' * 60)
+            
+            return metrics.mean_squared_error(y_true_orig, y_pred_orig), -metrics.mean_squared_error(y_true, y_pred_b)
+            
+            
+            
+            
 
     def save_model(self):
         rrl_args = {'dim_list': self.dim_list, 'use_not': self.use_not, 'use_skip': self.use_skip, 'estimated_grad': self.estimated_grad, 

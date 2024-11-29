@@ -1,0 +1,10 @@
+RID	y_no(b=0.3190)	y_yes(b=-0.3070)	Support	Rule
+(-1, 4)	-0.5932	0.5739	0.0842	month_dec | month_mar | month_oct | month_sep | poutcome_success | duration > 1106.717
+(-1, 7)	-0.5208	0.5161	0.1167	job_retired | month_dec | month_mar | month_oct | poutcome_success | duration > 1106.717
+(-1, 5)	0.4501	-0.5102	0.8068	contact_unknown | day_6 | month_aug | month_jan | month_jul | month_nov | pdays > 106.588
+(-1, 6)	0.3238	-0.3043	0.5648	contact_unknown | day_19 | day_20 | day_29 | month_feb | month_may
+(-1, 3)	0.2658	-0.2963	0.6898	housing_yes | loan_yes | contact_unknown
+(-1, 2)	0.2566	-0.1356	0.5471	housing_yes & duration <= 1106.717
+(-1, 0)	0.2416	-0.2271	0.4862	marital_married & duration <= 1106.717 & previous <= 0.879
+(-1, 1)	0.2133	-0.1544	0.5984	campaign > 1.008 & duration <= 1106.717
+############################################################

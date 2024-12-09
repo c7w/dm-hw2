@@ -18,23 +18,44 @@ DATA_DIR = './dataset'
 
 
 def get_data_loader(dataset, world_size, rank, batch_size, k=0, pin_memory=False, save_best=True):
-    if dataset in ["tic-tac-toe", "bank-marketing", "housing"]:
-        data_path = os.path.join(DATA_DIR, dataset + '.data')
-        info_path = os.path.join(DATA_DIR, dataset + '.info')
-        X_df, y_df, f_df, label_pos = read_csv(data_path, info_path, shuffle=True)
-        # import IPython; IPython.embed()
+    if dataset in ["tic-tac-toe", "bank-marketing", "housing", "breast-cancer"]:
+        if dataset == "breast-cancer":
+            data_path = os.path.join(DATA_DIR, dataset + '.data')
+            test_data_path = os.path.join(DATA_DIR, dataset + '-test.data')
+            info_path = os.path.join(DATA_DIR, dataset + '.info')
+            
+            X_df, y_df, f_df, label_pos = read_csv(data_path, info_path, shuffle=True)
+            X_test_df, y_test_df, f_test_df, label_pos = read_csv(test_data_path, info_path, shuffle=True)
+            
+            # DROP columns with all nan values
+            all_nan_cols = X_df.columns[X_df.isna().all()].tolist()
+            X_df.drop(all_nan_cols, axis=1, inplace=True)
+            X_test_df.drop(all_nan_cols, axis=1, inplace=True)
+            f_df = f_df[~f_df[0].isin(all_nan_cols)]
+            
+
+        else:
+        
+            data_path = os.path.join(DATA_DIR, dataset + '.data')
+            info_path = os.path.join(DATA_DIR, dataset + '.info')
+            X_df, y_df, f_df, label_pos = read_csv(data_path, info_path, shuffle=True)
+            # import IPython; IPython.embed()
 
         db_enc = DBEncoder(f_df, discrete=False, is_regression=dataset == "housing",)
         db_enc.fit(X_df, y_df)
 
         X, y = db_enc.transform(X_df, y_df, normalized=True, keep_stat=True)
+        if dataset == "breast-cancer":
+            X_train, y_train = X, y
+            X_test, y_test = db_enc.transform(X_test_df, y_test_df, normalized=True, keep_stat=False)
 
-        kf = KFold(n_splits=5, shuffle=True, random_state=0)
-        train_index, test_index = list(kf.split(X_df))[k]
-        X_train = X[train_index]
-        y_train = y[train_index]
-        X_test = X[test_index]
-        y_test = y[test_index]
+        else:
+            kf = KFold(n_splits=5, shuffle=True, random_state=0)
+            train_index, test_index = list(kf.split(X_df))[k]
+            X_train = X[train_index]
+            y_train = y[train_index]
+            X_test = X[test_index]
+            y_test = y[test_index]
 
         train_set = TensorDataset(torch.tensor(X_train.astype(np.float32)), torch.tensor(y_train.astype(np.float32)))
         test_set = TensorDataset(torch.tensor(X_test.astype(np.float32)), torch.tensor(y_test.astype(np.float32)))

@@ -2,6 +2,10 @@
 
 还有 baseline 没做，调参没仔细搜索，展示材料分工没分。运行方式放在 train.sh 里了。任务 1 上最好需要调到和paper里汇报的结果一样，后面两个越高肯定是越好。
 
+任务一 bank-marketing bin-classification / ours F1 72.03 / reported 77.18
+任务二 housing regression / ours MSE 35.28
+任务三 breast-cancer bin-classification / ours F1 77.38
+
 
 - 这个 weight decay 加的很sb，他没有对参数的个数取平均，而是直接加在所有参数上（可能这个是任务 1 没复现好的重点）
 - 我试着改深模型反而效果在任务3上变差了（其他两个任务看起来没太大变化），have no idea why

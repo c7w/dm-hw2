@@ -219,7 +219,7 @@ class RRL:
                     if self.is_rank0 and cnt % log_iter == 0 and cnt != 0 and self.writer is not None:
                         self.writer.add_scalar('Avg_Batch_Loss_GradGrafting', avg_batch_loss_rrl / log_iter, cnt)
                         edge_p = self.edge_penalty().item()
-                        self.writer.add_scalar('Edge_penalty/Log', np.log(edge_p), cnt)
+                        self.writer.add_scalar('Edge_penalty/Log', np.log(edge_p + 1e-5), cnt)
                         self.writer.add_scalar('Edge_penalty/Origin', edge_p, cnt)
                         avg_batch_loss_rrl = 0.0
 

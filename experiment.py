@@ -239,7 +239,7 @@ def test_model(args):
     rrl = load_model(args.model, args.device_ids[0], log_file=args.test_res, distributed=False, db_enc=db_enc, dataset=dataset)
     rrl.test(test_loader=test_loader, set_name='Test')
     if args.print_rule:
-        with open(args.rrl_file, 'w') as rrl_file:
+        with open(args.rrl_file, 'w') as rrl_file: 
             rule2weights = rrl.rule_print(db_enc.X_fname, db_enc.y_fname, train_loader, file=rrl_file, mean=db_enc.mean, std=db_enc.std)
     else:
         rule2weights = rrl.rule_print(db_enc.X_fname, db_enc.y_fname, train_loader, mean=db_enc.mean, std=db_enc.std, display=False)
@@ -264,7 +264,7 @@ def test_model(args):
             edge_cnt += len(rule)
             for rid in rule:
                 connected_rid[ln - abs(rid[0])].add(rid[1])
-    logging.info('\n\t{} of RRL  Model: {}'.format(metric, np.log(edge_cnt)))
+    logging.info('\n\t{} of RRL  Model: {}'.format(metric, np.log(edge_cnt + 1e-5)))
 
 
 

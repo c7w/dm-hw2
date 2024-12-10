@@ -1,9 +1,0 @@
-RID	y_no(b=0.4464)	y_yes(b=-0.6488)	Support	Rule
-(-1, 6)	-0.9315	0.9315	0.0751	month_dec | month_mar | month_oct | poutcome_success | duration > 1106.717
-(-1, 3)	-0.6638	0.6638	0.1941	job_student | month_jun | month_sep | poutcome_success | duration > 1106.717
-(-1, 4)	0.5966	-0.5972	0.8264	contact_telephone | contact_unknown | day_2 | month_aug | month_jan | month_jul | month_nov | pdays > 106.588
-(-1, 2)	0.5653	-0.5655	0.6967	housing_yes | loan_yes | contact_unknown | day_31
-(-1, 5)	0.4285	-0.4285	0.5414	contact_unknown | day_20 | day_29 | month_feb | month_may
-(-1, 0)	0.3605	-0.3604	0.4862	marital_married & duration <= 1106.717 & previous <= 0.879
-(-1, 1)	0.1767	-0.1766	0.9825	duration <= 1106.717
-############################################################
